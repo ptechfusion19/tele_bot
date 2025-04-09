@@ -1,6 +1,1 @@
-123.........
----456----------
-
-fjjvbjfbhv 
-
-ffjvnfkjvb
+My issue related to git push is resolved now 
