@@ -1,7 +1,17 @@
 import logging
 from typing import final
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+
+from telegram import Update,ReplyKeyboardMarkup,ReplyKeyboardRemove,InlineKeyboardButton,InlineKeyboardMarkup
+
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+    ContextTypes,
+    ConversationHandler,
+)
 
 
 TOKEN: final = '6482255236:AAEScgnZK3hsIpOQ-sxlHGAxK1H5R0e3UXI'
@@ -13,10 +23,14 @@ COMMANDS_HELP = {
     '/custom': 'Executes a custom command. You can extend this with functionality.',
     '/info': 'Provides information about the bot.',
     '/echo': 'Echoes the message you send to the bot.',
+    '/buttons': 'Shows inline buttons and links.',
 }
 
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 
@@ -25,64 +39,91 @@ user_data = {}
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Hello! I am your bot. You can talk to me here.')
+    welcome_message = (
+        "*Welcome!* 👋\n\n"
+        "I'm your assistant bot.\n"
+        "Type /help to see what I can do."
+    )
+    reply_keyboard = [['/help', '/info'], ['/custom', '/echo'], ['/buttons']]
+    await update.message.reply_text(
+        welcome_message,
+        parse_mode='Markdown',
+        reply_markup=ReplyKeyboardMarkup(
+            reply_keyboard, resize_keyboard=True, one_time_keyboard=True
+        )
+    )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = "Here are the commands I support:\n\n"
+    help_text = "*Here are the commands I support:*\n\n"
     for command, description in COMMANDS_HELP.items():
         help_text += f"{command}: {description}\n"
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode='Markdown')
 
 
 async def custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Hello! This is a custom command.')
+    await update.message.reply_text('👋 Hello! This is a custom command.')
 
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('I am a simple Telegram bot. I can respond to predefined commands and messages.')
-
+    await update.message.reply_text(
+        'ℹ️ I am a simple Telegram bot. I can respond to predefined commands and messages.'
+    )
 
 async def echo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
-    
     echo_message = user_message.replace('/echo', '').strip()
     if echo_message:
-        await update.message.reply_text(f'You said: {echo_message}')
+        await update.message.reply_text(f'🔁 You said: {echo_message}')
     else:
         await update.message.reply_text('Please provide a message to echo.')
 
 
+async def buttons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🌐 Google", url='https://www.google.com')],
+        [InlineKeyboardButton("💻 GitHub", url='https://github.com')],
+        [
+            InlineKeyboardButton("Say Hello", callback_data='say_hello'),
+            InlineKeyboardButton("Info", callback_data='get_info'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Choose an option:", reply_markup=reply_markup)
+
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == 'say_hello':
+        await query.edit_message_text("👋 Hello there!")
+    elif query.data == 'get_info':
+        await query.edit_message_text("🤖 This bot is for demo purposes.")
+
+
 def handle_response(text: str) -> str:
-    processed: str = text.lower()
-    
+    processed = text.lower()
     if 'hello' in processed:
         return 'Hello! How can I assist you today?'
-    
     if 'how are you' in processed:
         return 'I am good!'
-    
     if 'python' in processed:
-        return 'Python is a great programming language!'
-    
-    return 'I am not sure how to respond to that.'
+        return '🐍 Python is a great programming language!'
+    return '🤔 I am not sure how to respond to that.'
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message_type: str = update.message.chat.type
-    text: str = update.message.text
-    
+    message_type = update.message.chat.type
+    text = update.message.text
     print(f"User({update.effective_user.id}) in {message_type} sent: {text}")
-    
     if message_type == 'group':
         if BOT_USERNAME in text:
-            new_text: str = text.replace(BOT_USERNAME, '').strip()
-            response: str = handle_response(new_text)
+            new_text = text.replace(BOT_USERNAME, '').strip()
+            response = handle_response(new_text)
         else:
             return
     else:
-        response: str = handle_response(text)
-    
+        response = handle_response(text)
     print('Bot:', response)
     await update.message.reply_text(response)
 
@@ -92,70 +133,87 @@ async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Great! What is your name?")
+    await update.message.reply_text("📝 Great! What is your *name*?", parse_mode='Markdown')
     return NAME
 
+
 async def ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data[update.message.from_user.id] = {'name': update.message.text}  # Store the name
-    await update.message.reply_text(f"Hello, {update.message.text}! What is your email address?")
+    user_data[update.message.from_user.id] = {'name': update.message.text}
+    await update.message.reply_text(f"Nice to meet you, {update.message.text}! What's your *email*?", parse_mode='Markdown')
     return EMAIL
 
+
 async def ask_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data[update.message.from_user.id]['email'] = update.message.text  # Store the email
-    await update.message.reply_text(f"Got it! You said your email is {update.message.text}. Is everything correct? (Yes/No)")
+    user_data[update.message.from_user.id]['email'] = update.message.text
+    await update.message.reply_text(
+        f"Got it! 📧 You said your email is: *{update.message.text}*.\nIs this correct? (Yes/No)",
+        parse_mode='Markdown'
+    )
     return CONFIRMATION
+
 
 async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = update.message.text.lower()
-
     if response == 'yes':
-        
         user_info = user_data[update.message.from_user.id]
-        await update.message.reply_text(f"Thank you {user_info['name']}! Your information has been recorded.")
-        del user_data[update.message.from_user.id]  # Clear the stored user data
+        await update.message.reply_text(
+            f"✅ Thank you *{user_info['name']}*! Your info has been recorded.",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        del user_data[update.message.from_user.id]
         return ConversationHandler.END
     elif response == 'no':
-        await update.message.reply_text("Let's start over. Type /begin to begin again.")
+        await update.message.reply_text(
+            "❌ Let's start over. Type /begin to start again.",
+            reply_markup=ReplyKeyboardRemove()
+        )
         return ConversationHandler.END
     else:
-        
-        await update.message.reply_text("Please respond with 'Yes' or 'No'.")
+        await update.message.reply_text("⚠️ Please respond with 'Yes' or 'No'.")
         return CONFIRMATION
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("The conversation has been canceled. You can type /begin to start again.")
+    await update.message.reply_text(
+        "🚫 The conversation has been canceled. You can type /begin to start again.",
+        reply_markup=ReplyKeyboardRemove()
+    )
     return ConversationHandler.END
 
+
 if __name__ == '__main__':
-    
     app = Application.builder().token(TOKEN).build()
 
-
+    
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('custom', custom_command))
     app.add_handler(CommandHandler('info', info_command))
     app.add_handler(CommandHandler('echo', echo_command))
+    app.add_handler(CommandHandler('buttons', buttons_command))
 
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    
+    app.add_handler(CallbackQueryHandler(button_callback))
+
+    
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler('begin', start_conversation)],
+        states={
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_name)],
+            EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_email)],
+            CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_confirmation)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+    app.add_handler(conversation_handler)
+
+    
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     
     app.add_error_handler(error)
 
-    conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler('begin', start_conversation)],  
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.Command(), ask_name)],
-            EMAIL: [MessageHandler(filters.TEXT & ~filters.Command(), ask_email)],
-            CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.Command(), handle_confirmation)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],  
-    )
-    
-    # Add conversation handler
-    app.add_handler(conversation_handler)
-
-    # Start polling for updates
-    print('Bot started!')
+    print("Bot started!")
     app.run_polling(poll_interval=1)
+
