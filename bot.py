@@ -239,32 +239,26 @@ import asyncio
 import logging
 import sqlite3
 from typing import Final
-
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import (
-    Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+    Message, ReplyKeyboardRemove,
     InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 )
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.storage.memory import MemoryStorage
 
-# Bot token and username
 TOKEN: Final = '8016112194:AAEYKqbIHjIHnqd-T77JktYG2C8vJVCsqHE'.strip()
 BOT_USERNAME: Final = '@differnet123bot_bot'
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 
-# Initialize bot and dispatcher
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
-# Command help list
 COMMANDS_HELP = {
     '/start': 'Starts the bot and gives a welcome message.',
     '/help': 'Shows the list of available commands.',
@@ -278,7 +272,6 @@ COMMANDS_HELP = {
     '/view_reviews': 'View all reviews.',
 }
 
-# FSM for form
 class Form(StatesGroup):
     name = State()
     email = State()
@@ -286,18 +279,22 @@ class Form(StatesGroup):
 
 class ReviewForm(StatesGroup):
     name = State()
+    email = State()
     rating = State()
     comment = State()
 
-# Setup SQLite DB for reviews
+import sqlite3
+import os
+
 def init_db():
-    conn = sqlite3.connect('reviews.db')
+    conn = sqlite3.connect("reviews.db")
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS reviews (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             name TEXT,
+            email TEXT,
             rating INTEGER,
             comment TEXT
         )
@@ -305,22 +302,16 @@ def init_db():
     conn.commit()
     conn.close()
 
-# /start command
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text='/help'), KeyboardButton(text='/info')],
-            [KeyboardButton(text='/custom'), KeyboardButton(text='/echo')],
-            [KeyboardButton(text='/buttons'), KeyboardButton(text='/begin')],
-            [KeyboardButton(text='/cancel'), KeyboardButton(text='/review')],
-            [KeyboardButton(text='/view_reviews'), KeyboardButton(text='/remove')],
-        ],
-        resize_keyboard=True
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Submit Review", callback_data="submit_review")], [InlineKeyboardButton(text="📋 Review ", callback_data="review")]
+       
+    ])
     await message.answer(
-        "<b>Welcome!</b> 👋\n\nI'm your assistant bot.\nType /help to see what I can do.",
-        reply_markup=kb
+        "<b>Welcome!</b> 👋\n\nI'm your assistant bot.if you need help press /help ....\nFor the purpose of adding review..Choose an option below:",
+        reply_markup=keyboard
     )
 
 @dp.message(Command('help'))
@@ -341,10 +332,6 @@ async def cmd_info(message: Message):
 async def cmd_echo(message: Message):
     text = message.text.replace('/echo', '').strip()
     await message.answer(f'🔁 You said: {text}' if text else "Please provide text after /echo.")
-
-@dp.message(Command('remove'))
-async def cmd_remove(message: Message):
-    await message.answer("🧼 Removed keyboard. Type /start to get it back.", reply_markup=ReplyKeyboardRemove())
 
 @dp.message(Command('buttons'))
 async def cmd_buttons(message: Message):
@@ -370,15 +357,9 @@ async def cb_info(callback: CallbackQuery):
     await callback.message.edit_text("🤖 This bot is for demo purposes.")
     await callback.answer()
 
-# FSM form: name -> email -> confirm
 @dp.message(Command('begin'))
 async def begin(message: Message, state: FSMContext):
-    cancel_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text='Cancel')]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    await message.answer("📝 Great! What is your <b>name</b>?", reply_markup=cancel_kb)
+    await message.answer("📝 Great! What is your <b>name</b>?")
     await state.set_state(Form.name)
 
 @dp.message(Form.name)
@@ -387,11 +368,7 @@ async def name_input(message: Message, state: FSMContext):
         await cancel(message, state)
         return
     await state.update_data(name=message.text)
-    await message.answer("Nice to meet you! What is your <b>email</b>?", reply_markup=ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text='Cancel')]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    ))
+    await message.answer("Nice to meet you! What is your <b>email</b>?")
     await state.set_state(Form.email)
 
 @dp.message(Form.email)
@@ -415,41 +392,48 @@ async def confirm_input(message: Message, state: FSMContext):
 
 @dp.message(Command('cancel'))
 async def cancel(message: Message, state: FSMContext):
-    await message.answer("🚫 Conversation canceled.", reply_markup=ReplyKeyboardRemove())
+    await message.answer("🚫 Conversation canceled. Type /start to restart")
     await state.clear()
 
-# Review form start
-@dp.message(Command('review'))
-async def start_review(message: Message, state: FSMContext):
-    await message.answer("📝 Please enter your <b>name</b> for the review:")
+@dp.callback_query(F.data == "submit_review")
+async def start_review(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("📝 Please enter your <b>name</b>:")
     await state.set_state(ReviewForm.name)
+    await callback.answer()
 
 @dp.message(ReviewForm.name)
-async def process_review_name(message: Message, state: FSMContext):
+async def process_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("🔢 Please rate us (1-5):")
+    await message.answer("📧 Please enter your <b>email</b>:")
+    await state.set_state(ReviewForm.email)
+
+@dp.message(ReviewForm.email)
+async def process_email(message: Message, state: FSMContext):
+    await state.update_data(email=message.text)
+    await message.answer("⭐ Please rate us (1-5):")
     await state.set_state(ReviewForm.rating)
 
 @dp.message(ReviewForm.rating)
-async def process_review_rating(message: Message, state: FSMContext):
-    if not message.text.isdigit() or not (1 <= int(message.text) <= 5):
-        await message.answer("Rating must be a number between 1 and 5. Try again:")
+async def process_rating(message: Message, state: FSMContext):
+    rating_text = message.text.strip()
+    if not rating_text.isdigit() or not (1 <= int(rating_text) <= 5):
+        await message.answer("⚠️ Please enter a valid rating between 1 and 5.")
         return
-    await state.update_data(rating=int(message.text))
-    await message.answer("💬 Any comments? (Type 'skip' to leave blank):")
+
+    await state.update_data(rating=int(rating_text))
+    await message.answer("💬 Optional: Please enter your comment (or type 'skip' to continue):")
     await state.set_state(ReviewForm.comment)
 
 @dp.message(ReviewForm.comment)
-async def process_review_comment(message: Message, state: FSMContext):
+async def process_comment(message: Message, state: FSMContext):
     comment = message.text if message.text.lower() != 'skip' else ''
     await state.update_data(comment=comment)
 
     data = await state.get_data()
 
-    # Inline keyboard for Submit and Cancel
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Submit", callback_data="submit_review"),
+            InlineKeyboardButton(text="✅ Submit", callback_data="submit_review_confirm"),
             InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_review")
         ]
     ])
@@ -457,27 +441,29 @@ async def process_review_comment(message: Message, state: FSMContext):
     summary = (
         f"<b>Please confirm your review:</b>\n\n"
         f"👤 Name: <b>{data['name']}</b>\n"
+        f"📧 Email: <b>{data['email']}</b>\n"
         f"⭐ Rating: <b>{data['rating']}/5</b>\n"
         f"💬 Comment: <i>{comment or 'No comment'}</i>"
     )
     await message.answer(summary, reply_markup=kb)
-    @dp.callback_query(F.data == "submit_review")
-    async def submit_review(callback: CallbackQuery, state: FSMContext):
-        data = await state.get_data()
-        user_id = callback.from_user.id
 
-        conn = sqlite3.connect('reviews.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO reviews (user_id, name, rating, comment)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, data['name'], data['rating'], data['comment']))
-        conn.commit()
-        conn.close()
+@dp.callback_query(F.data == "submit_review_confirm")
+async def submit_review(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user_id = callback.from_user.id
 
-        await callback.message.edit_text("✅ Thank you! Your review has been submitted.")
-        await state.clear()
-        await callback.answer()
+    conn = sqlite3.connect('reviews.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO reviews (user_id, name, email, rating, comment)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, data['name'], data['email'], data['rating'], data['comment']))
+    conn.commit()
+    conn.close()
+
+    await callback.message.edit_text("✅ Thank you! Your review has been submitted.")
+    await state.clear()
+    await callback.answer()
 
 @dp.callback_query(F.data == "cancel_review")
 async def cancel_review(callback: CallbackQuery, state: FSMContext):
@@ -485,28 +471,77 @@ async def cancel_review(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-@dp.message(Command('view_reviews'))
-async def view_reviews(message: Message):
+@dp.callback_query(F.data == "review")
+async def review(callback: CallbackQuery):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 View All Reviews", callback_data="view_all_reviews")],
+        [InlineKeyboardButton(text="👤 My Reviews", callback_data="my_reviews")]
+    ])
+    await callback.message.edit_text("📋 Review Menu:", reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data == "view_all_reviews")
+async def view_all_reviews(callback: CallbackQuery):
     conn = sqlite3.connect('reviews.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT name, rating, comment FROM reviews')
+    cursor.execute('SELECT name, email, rating, comment FROM reviews')
     reviews = cursor.fetchall()
     conn.close()
 
     if not reviews:
-        await message.answer("No reviews found.")
+        await callback.message.edit_text("No reviews found.")
+        await callback.answer()
         return
 
-    response = "<b>📋 Reviews:</b>\n\n"
-    for idx, (name, rating, comment) in enumerate(reviews, 1):
-        response += f"{idx}. <b>{name}</b> rated <b>{rating}/5</b>\n"
+    response = "<b>📋 All Reviews:</b>\n\n"
+    for idx, (name, email, rating, comment) in enumerate(reviews, 1):  # ✅ fix here
+        response += (
+            f"{idx}. 👤 <b>{name}</b>\n"
+            f"   📧 <i>{email}</i>\n"
+            f"   ⭐ <b>{rating}/5</b>\n"
+        )
         if comment:
             response += f"   💬 {comment}\n"
         response += "\n"
 
-    await message.answer(response)
+    await callback.message.edit_text(response)
+    await callback.answer()
 
-# Fallback text handler
+@dp.callback_query(F.data == 'my_reviews')
+async def my_reviews(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    conn = sqlite3.connect('reviews.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT name, email, rating, comment FROM reviews WHERE user_id = ?', (user_id,))
+    reviews = cursor.fetchall()
+    conn.close()
+
+    if not reviews:
+        await callback.message.answer(
+            "❌ You haven't submitted any reviews yet.\n\n"
+            "To submit your review, press the 'Submit Review' button below.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="📝 Submit Review", callback_data='submit_review')]
+                ]
+            )
+        )
+    else:
+        response = "<b>📝 Your Reviews:</b>\n\n"
+        for idx, (name, email, rating, comment) in enumerate(reviews, 1):  # ✅ fix here
+            response += (
+                f"{idx}. 👤 <b>{name}</b>\n"
+                f"   📧 <i>{email}</i>\n"
+                f"   ⭐ <b>{rating}/5</b>\n"
+            )
+            if comment:
+                response += f"   💬 {comment}\n"
+            response += "\n"
+        await callback.message.answer(response)
+
+    await callback.answer()
+
+
 def handle_response(text: str) -> str:
     text = text.lower()
     if 'hello' in text:
@@ -517,12 +552,6 @@ def handle_response(text: str) -> str:
         return "🐍 Python is awesome!"
     return "🤔 I didn't understand that."
 
-@dp.message()
-async def fallback(message: Message):
-    response = handle_response(message.text)
-    await message.answer(response)
-
-# Start bot
 async def main():
     init_db()
     print("🤖 Bot is running...")
