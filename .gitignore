@@ -1,0 +1,8 @@
+# Ignore virtual environment folders
+telegram_bot_env/
+
+# Ignore environment variable files
+.env
+
+# Ignore SQLite database files
+*.sqlite3

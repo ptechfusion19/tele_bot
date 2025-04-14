@@ -1,4 +1,6 @@
 import asyncio
+from dotenv import load_dotenv
+import os
 import logging
 import sqlite3
 from typing import Final
@@ -14,12 +16,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 
-TOKEN: Final = '8016112194:AAEYKqbIHjIHnqd-T77JktYG2C8vJVCsqHE'.strip()
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_USERNAME: Final = '@differnet123bot_bot'
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 COMMANDS_HELP = {
