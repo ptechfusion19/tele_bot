@@ -4,20 +4,23 @@ import os
 import logging
 import sqlite3
 from typing import Final
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import (
     Message, ReplyKeyboardRemove,
-    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    CallbackQuery, FSInputFile
 )
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
+# Load environment and set up directories
 load_dotenv()
-
+os.makedirs("media", exist_ok=True)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_USERNAME: Final = '@differnet123bot_bot'
 
@@ -25,6 +28,21 @@ logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
+router = Router()
+
+# Cancel FSM middleware
+class CancelFSMOnNewEventMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        state: FSMContext = data.get("state")
+        if state and await state.get_state():
+            if isinstance(event, Message) and event.text and event.text.startswith('/'):
+                await state.clear()
+            elif isinstance(event, CallbackQuery):
+                await state.clear()
+        return await handler(event, data)
+
+dp.message.middleware(CancelFSMOnNewEventMiddleware())
+dp.callback_query.middleware(CancelFSMOnNewEventMiddleware())
 
 COMMANDS_HELP = {
     '/start': 'Starts the bot and gives a welcome message.',
@@ -37,6 +55,10 @@ COMMANDS_HELP = {
     '/cancel': 'Cancel the conversation.',
     '/review': 'Leave a review.',
     '/view_reviews': 'View all reviews.',
+    '/send_photo': 'Send a sample photo.',
+    '/send_video': 'Send a sample video.',
+    '/send_audio': 'Send a sample audio file.',
+    '/send_doc': 'Send a sample document.',
 }
 
 class Form(StatesGroup):
@@ -50,36 +72,30 @@ class ReviewForm(StatesGroup):
     rating = State()
     comment = State()
 
-import sqlite3
-import os
-
 def init_db():
     conn = sqlite3.connect("reviews.db")
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            name TEXT,
-            email TEXT,
-            rating INTEGER,
-            comment TEXT
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        name TEXT,
+        email TEXT,
+        rating INTEGER,
+        comment TEXT
+    )''')
     conn.commit()
     conn.close()
-
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 Submit Review", callback_data="submit_review")], [InlineKeyboardButton(text="📋 Review ", callback_data="review")]
-       
+        [InlineKeyboardButton(text="📝 Submit Review", callback_data="submit_review")],
+        [InlineKeyboardButton(text="📋 Review", callback_data="review")]
     ])
-    await message.answer(
-        "<b>Welcome!</b> 👋\n\nI'm your assistant bot.if you need help press /help ....\nFor the purpose of adding review..Choose an option below:",
-        reply_markup=keyboard
-    )
+    await message.answer("<b>Welcome!</b> 👋\n\nI'm your assistant bot. Use /help to explore commands.\n Use:\n"
+                         "/send_photo\n/send_video\n/send_audio\n/send_doc\n"
+                         "for send me media files!\nSubmit and view Your review....", reply_markup=keyboard)
+    
 
 @dp.message(Command('help'))
 async def cmd_help(message: Message):
@@ -102,16 +118,12 @@ async def cmd_echo(message: Message):
 
 @dp.message(Command('buttons'))
 async def cmd_buttons(message: Message):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🌐 Google", url='https://www.google.com')],
-            [InlineKeyboardButton(text="💻 GitHub", url='https://github.com')],
-            [
-                InlineKeyboardButton(text="Say Hello", callback_data='say_hello'),
-                InlineKeyboardButton(text="Info", callback_data='get_info'),
-            ]
-        ]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Google", url='https://www.google.com')],
+        [InlineKeyboardButton(text="💻 GitHub", url='https://github.com')],
+        [InlineKeyboardButton(text="Say Hello", callback_data='say_hello'),
+         InlineKeyboardButton(text="Info", callback_data='get_info')]
+    ])
     await message.answer("Choose an option:", reply_markup=keyboard)
 
 @dp.callback_query(F.data == 'say_hello')
@@ -126,7 +138,7 @@ async def cb_info(callback: CallbackQuery):
 
 @dp.message(Command('begin'))
 async def begin(message: Message, state: FSMContext):
-    await message.answer("📝 Great! What is your <b>name</b>?")
+    await message.answer("📝 What is your <b>name</b>?")
     await state.set_state(Form.name)
 
 @dp.message(Form.name)
@@ -135,7 +147,7 @@ async def name_input(message: Message, state: FSMContext):
         await cancel(message, state)
         return
     await state.update_data(name=message.text)
-    await message.answer("Nice to meet you! What is your <b>email</b>?")
+    await message.answer("Nice! What is your <b>email</b>?")
     await state.set_state(Form.email)
 
 @dp.message(Form.email)
@@ -146,89 +158,78 @@ async def email_input(message: Message, state: FSMContext):
 
 @dp.message(Form.confirm)
 async def confirm_input(message: Message, state: FSMContext):
-    text = message.text.lower()
-    if text == "yes":
+    if message.text.lower() == "yes":
         data = await state.get_data()
-        await message.answer(f"✅ Thank you <b>{data['name']}</b>! Your info has been recorded.", reply_markup=ReplyKeyboardRemove())
+        await message.answer(f"✅ Thank you <b>{data['name']}</b>! Info saved.", reply_markup=ReplyKeyboardRemove())
         await state.clear()
-    elif text == "no":
+    elif message.text.lower() == "no":
         await message.answer("❌ Let's start over. Type /begin to restart.", reply_markup=ReplyKeyboardRemove())
         await state.clear()
     else:
-        await message.answer("⚠️ Please respond with 'Yes' or 'No'.")
+        await message.answer("⚠️ Please reply with 'Yes' or 'No'.")
 
 @dp.message(Command('cancel'))
 async def cancel(message: Message, state: FSMContext):
-    await message.answer("🚫 Conversation canceled. Type /start to restart")
+    await message.answer("🚫 Canceled. Type /start to begin again.")
     await state.clear()
 
 @dp.callback_query(F.data == "submit_review")
 async def start_review(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("📝 Please enter your <b>name</b>:")
+    await callback.message.edit_text("📝 Enter your <b>name</b>:")
     await state.set_state(ReviewForm.name)
     await callback.answer()
 
 @dp.message(ReviewForm.name)
 async def process_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("📧 Please enter your <b>email</b>:")
+    await message.answer("📧 Enter your <b>email</b>:")
     await state.set_state(ReviewForm.email)
 
 @dp.message(ReviewForm.email)
 async def process_email(message: Message, state: FSMContext):
     await state.update_data(email=message.text)
-    await message.answer("⭐ Please rate us (1-5):")
+    await message.answer("⭐ Rate us (1-5):")
     await state.set_state(ReviewForm.rating)
 
 @dp.message(ReviewForm.rating)
 async def process_rating(message: Message, state: FSMContext):
-    rating_text = message.text.strip()
-    if not rating_text.isdigit() or not (1 <= int(rating_text) <= 5):
-        await message.answer("⚠️ Please enter a valid rating between 1 and 5.")
+    if not message.text.isdigit() or not (1 <= int(message.text) <= 5):
+        await message.answer("⚠️ Enter a valid rating (1-5).")
         return
-
-    await state.update_data(rating=int(rating_text))
-    await message.answer("💬 Optional: Please enter your comment (or type 'skip' to continue):")
+    await state.update_data(rating=int(message.text))
+    await message.answer("💬 Any comment? (or type 'skip')")
     await state.set_state(ReviewForm.comment)
 
 @dp.message(ReviewForm.comment)
 async def process_comment(message: Message, state: FSMContext):
     comment = message.text if message.text.lower() != 'skip' else ''
     await state.update_data(comment=comment)
-
     data = await state.get_data()
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Submit", callback_data="submit_review_confirm"),
-            InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_review")
-        ]
-    ])
-
     summary = (
-        f"<b>Please confirm your review:</b>\n\n"
-        f"👤 Name: <b>{data['name']}</b>\n"
-        f"📧 Email: <b>{data['email']}</b>\n"
-        f"⭐ Rating: <b>{data['rating']}/5</b>\n"
-        f"💬 Comment: <i>{comment or 'No comment'}</i>"
+        f"<b>Confirm your review:</b>\n\n"
+        f"👤 <b>{data['name']}</b>\n"
+        f"📧 <b>{data['email']}</b>\n"
+        f"⭐ <b>{data['rating']}/5</b>\n"
+        f"💬 {comment or 'No comment'}"
     )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Submit", callback_data="submit_review_confirm"),
+         InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_review")]
+    ])
     await message.answer(summary, reply_markup=kb)
 
 @dp.callback_query(F.data == "submit_review_confirm")
 async def submit_review(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user_id = callback.from_user.id
-
     conn = sqlite3.connect('reviews.db')
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO reviews (user_id, name, email, rating, comment)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, data['name'], data['email'], data['rating'], data['comment']))
+    cursor.execute('''INSERT INTO reviews (user_id, name, email, rating, comment)
+                      VALUES (?, ?, ?, ?, ?)''',
+                   (user_id, data['name'], data['email'], data['rating'], data['comment']))
     conn.commit()
     conn.close()
-
-    await callback.message.edit_text("✅ Thank you! Your review has been submitted.")
+    await callback.message.edit_text("✅ Review submitted. Thank you!")
     await state.clear()
     await callback.answer()
 
@@ -254,23 +255,18 @@ async def view_all_reviews(callback: CallbackQuery):
     cursor.execute('SELECT name, email, rating, comment FROM reviews')
     reviews = cursor.fetchall()
     conn.close()
-
     if not reviews:
         await callback.message.edit_text("No reviews found.")
         await callback.answer()
         return
-
     response = "<b>📋 All Reviews:</b>\n\n"
     for idx, (name, email, rating, comment) in enumerate(reviews, 1):
         response += (
             f"{idx}. 👤 <b>{name}</b>\n"
             f"   📧 <i>{email}</i>\n"
             f"   ⭐ <b>{rating}/5</b>\n"
+            f"   💬 {comment}\n\n"
         )
-        if comment:
-            response += f"   💬 {comment}\n"
-        response += "\n"
-
     await callback.message.edit_text(response)
     await callback.answer()
 
@@ -282,42 +278,73 @@ async def my_reviews(callback: CallbackQuery):
     cursor.execute('SELECT name, email, rating, comment FROM reviews WHERE user_id = ?', (user_id,))
     reviews = cursor.fetchall()
     conn.close()
-
     if not reviews:
-        await callback.message.answer(
-            "❌ You haven't submitted any reviews yet.\n\n"
-            "To submit your review, press the 'Submit Review' button below.",
+        await callback.message.answer("❌ You haven't submitted any reviews yet.",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="📝 Submit Review", callback_data='submit_review')]
-                ]
+                inline_keyboard=[[InlineKeyboardButton(text="📝 Submit Review", callback_data='submit_review')]]
             )
         )
     else:
         response = "<b>📝 Your Reviews:</b>\n\n"
-        for idx, (name, email, rating, comment) in enumerate(reviews, 1): 
+        for idx, (name, email, rating, comment) in enumerate(reviews, 1):
             response += (
                 f"{idx}. 👤 <b>{name}</b>\n"
                 f"   📧 <i>{email}</i>\n"
                 f"   ⭐ <b>{rating}/5</b>\n"
+                f"   💬 {comment}\n\n"
             )
-            if comment:
-                response += f"   💬 {comment}\n"
-            response += "\n"
         await callback.message.answer(response)
-
     await callback.answer()
 
+@router.message(F.photo)
+async def handle_photo(message: Message):
+    file = message.photo[-1]
+    path = f"media/photo_{file.file_unique_id}.jpg"
+    await file.download(destination=path)
+    await message.answer("📸 Photo received and saved!")
 
-def handle_response(text: str) -> str:
-    text = text.lower()
-    if 'hello' in text:
-        return "Hello! How can I help you today?"
-    if 'how are you' in text:
-        return "I'm doing great!"
-    if 'python' in text:
-        return "🐍 Python is awesome!"
-    return "🤔 I didn't understand that."
+@router.message(F.video)
+async def handle_video(message: Message):
+    file = message.video
+    path = f"media/video_{file.file_unique_id}.mp4"
+    await file.download(destination=path)
+    await message.answer("🎬 Video received and saved!")
+
+@router.message(F.audio)
+async def handle_audio(message: Message):
+    file = message.audio
+    path = f"media/audio_{file.file_unique_id}.mp3"
+    await file.download(destination=path)
+    await message.answer("🎵 Audio received and saved!")
+
+@router.message(F.document)
+async def handle_document(message: Message):
+    file = message.document
+    path = f"media/doc_{file.file_unique_id}_{file.file_name}"
+    await file.download(destination=path)
+    await message.answer("📄 Document received and saved!")
+
+@dp.message(Command("send_photo"))
+async def send_sample_photo(message: Message):
+    file = FSInputFile("media/download.png")
+    await message.answer_photo(file, caption="📸 Sample photo!")
+
+@dp.message(Command("send_video"))
+async def send_sample_video(message: Message):
+    file = FSInputFile("media/sample_video.mp4")
+    await message.answer_video(file, caption="🎬 Sample video!")
+
+@dp.message(Command("send_audio"))
+async def send_sample_audio(message: Message):
+    file = FSInputFile("media/sample_audio.mp3")
+    await message.answer_audio(file, caption="🎵 Sample audio!")
+
+@dp.message(Command("send_doc"))
+async def send_sample_doc(message: Message):
+    file = FSInputFile("media/sample_doc.doc")
+    await message.answer_document(file, caption="📄 Sample document!")
+
+dp.include_router(router)
 
 async def main():
     init_db()
@@ -328,6 +355,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("🛑 Bot stopped by user.")
-
-
+        print("🛑 Bot stopped.")
