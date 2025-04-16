@@ -30,7 +30,7 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
-# Cancel FSM middleware
+
 class CancelFSMOnNewEventMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         state: FSMContext = data.get("state")
@@ -53,8 +53,6 @@ COMMANDS_HELP = {
     '/buttons': 'Inline buttons demo.',
     '/begin': 'Start a conversation to collect name/email.',
     '/cancel': 'Cancel the conversation.',
-    '/review': 'Leave a review.',
-    '/view_reviews': 'View all reviews.',
     '/send_photo': 'Send a sample photo.',
     '/send_video': 'Send a sample video.',
     '/send_audio': 'Send a sample audio file.',
@@ -356,3 +354,4 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         print("🛑 Bot stopped.")
+
