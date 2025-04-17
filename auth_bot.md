@@ -1,6 +1,6 @@
 # Telegram Bot with Role-Based Access and FSM (Aiogram v3)
 
-This bot uses the Aiogram v3 framework with full role-based access (admin/user), login authentication, command filtering by role, and FSM (Finite State Machine) flows. It stores users and credentials in a SQLite database and supports media uploads, custom buttons, and more.
+This bot uses the Aiogram v3 framework with full role-based access (admin/user), login authentication, command filtering by role, and FSM (Finite State Machine) flows. It stores users and credentials in a SQLite database and custom buttons, and more.
 
 ## 🔧 Features
 
@@ -31,7 +31,7 @@ pip install aiogram python-dotenv
 Create a `.env` file in the root directory:
 
 ```env
-BOT_TOKEN=your_telegram_bot_token
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 ```
 
 ## 🧠 Commands Overview
