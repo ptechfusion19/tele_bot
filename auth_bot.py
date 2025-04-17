@@ -250,7 +250,7 @@ async def login_password(message: Message, state: FSMContext):
     if result and result[0] == password:
         role = result[1]
         set_user_role(message.from_user.id, role)
-        await message.answer(f"✅ Login successful! Role: {role}")
+        await message.answer(f"✅ Login successful! Role: {role}\nTo see available commands, use /help.")
     else:
         await message.answer("❌ Invalid credentials.")
     await state.clear()
