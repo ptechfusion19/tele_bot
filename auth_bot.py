@@ -145,7 +145,17 @@ async def cmd_start(message: Message):
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer("Welcome! Please login to continue:", reply_markup=keyboard)
-    
+
+@router.callback_query(F.data == "/start")
+async def cmd_start_button(callback: CallbackQuery):
+    buttons = [
+        [InlineKeyboardButton(text="🔐 Login", callback_data="login")],
+        [InlineKeyboardButton(text="👤 Continue as User", callback_data="open_user")]
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.answer("Welcome! Please login to continue:", reply_markup=keyboard)
+    await callback.answer()
+ 
 @dp.callback_query(F.data == "login")
 async def login_button(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("🧑 Enter your username:")
