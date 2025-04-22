@@ -1,4 +1,3 @@
-# middlewares.py
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext

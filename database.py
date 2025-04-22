@@ -1,4 +1,3 @@
-# database.py
 import sqlite3
 from config import ADMIN_ROLE, USER_ROLE
 

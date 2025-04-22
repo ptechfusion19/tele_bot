@@ -1,4 +1,3 @@
-# keyboards.py
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import COMMANDS_HELP, ADMIN_ROLE
 
