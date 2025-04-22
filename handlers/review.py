@@ -1,4 +1,3 @@
-# handlers/review.py
 import logging
 import sqlite3
 
